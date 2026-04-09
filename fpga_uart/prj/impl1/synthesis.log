@@ -1,0 +1,163 @@
+synthesis:  version Diamond (64-bit) 3.14.0.75.2
+
+Copyright (c) 1991-1994 by NeoCAD Inc. All rights reserved.
+Copyright (c) 1995 AT&T Corp.   All rights reserved.
+Copyright (c) 1995-2001 Lucent Technologies Inc.  All rights reserved.
+Copyright (c) 2001 Agere Systems   All rights reserved.
+Copyright (c) 2002-2024 Lattice Semiconductor Corporation,  All rights reserved.
+Thu Apr  9 11:50:52 2026
+
+
+Command Line:  synthesis -f fpga_uart_impl1_lattice.synproj 
+
+Synthesis options:
+The -a option is MachXO3D.
+The -s option is 5.
+The -t option is CABGA256.
+The -d option is LCMXO3D-9400HC.
+Using package CABGA256.
+Using performance grade 5.
+                                                          
+
+##########################################################
+
+### Lattice Family : MachXO3D
+
+### Device  : LCMXO3D-9400HC
+
+### Package : CABGA256
+
+### Speed   : 5
+
+##########################################################
+
+                                                          
+
+INFO - synthesis: User-Selected Strategy Settings
+Optimization goal = Balanced
+The -top option is not used.
+Target frequency = 200.000000 MHz.
+Maximum fanout = 1000.
+Timing path count = 3
+BRAM utilization = 100.000000 %
+DSP usage = true
+DSP utilization = 100.000000 %
+fsm_encoding_style = auto
+resolve_mixed_drivers = 0
+fix_gated_clocks = 1
+
+Mux style = Auto
+Use Carry Chain = true
+carry_chain_length = 0
+Loop Limit = 1950.
+Use IO Insertion = TRUE
+Use IO Reg = AUTO
+
+Resource Sharing = TRUE
+Propagate Constants = TRUE
+Remove Duplicate Registers = TRUE
+force_gsr = auto
+ROM style = auto
+RAM style = auto
+The -comp option is FALSE.
+The -syn option is FALSE.
+-p /home/pnieves/fpga-workspace/fpga_uart/prj (searchpath added)
+-p /home/pnieves/lscc/diamond/3.14/ispfpga/se5c00/data (searchpath added)
+-p /home/pnieves/fpga-workspace/fpga_uart/prj/impl1 (searchpath added)
+-p /home/pnieves/fpga-workspace/fpga_uart/prj (searchpath added)
+Verilog design file = /home/pnieves/fpga-workspace/fpga_uart/src/fpga_uart_top.v
+NGD file = fpga_uart_impl1.ngd
+-sdc option: SDC file input not used.
+-lpf option: Output file option is ON.
+Hardtimer checking is enabled (default). The -dt option is not used.
+The -r option is OFF. [ Remove LOC Properties is OFF. ]
+WARNING - synthesis: Setting fpga_uart_top as the top-level module. To specify the top-level module explicitly, use the -top option.
+Technology check ok...
+
+Analyzing Verilog file /home/pnieves/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo3d.v. VERI-1482
+Compile design.
+Compile Design Begin
+Analyzing Verilog file /home/pnieves/fpga-workspace/fpga_uart/src/fpga_uart_top.v. VERI-1482
+Analyzing Verilog file /home/pnieves/lscc/diamond/3.14/ispfpga/userware/unix/SYNTHESIS_HEADERS/machxo3d.v. VERI-1482
+Top module name (Verilog): fpga_uart_top
+INFO - synthesis: /home/pnieves/fpga-workspace/fpga_uart/src/fpga_uart_top.v(5): compiling module fpga_uart_top. VERI-1018
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/se5c00/data/se5clib.ngl'...
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/xo2c00a/data/xo2alib.ngl'...
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/xo2c00/data/xo2clib.ngl'...
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/mg5g00/data/mg5glib.ngl'...
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/or5g00/data/orc5glib.ngl'...
+Loading device for application map from file 'se5c9400.nph' in environment: /home/pnieves/lscc/diamond/3.14/ispfpga.
+Package Status:                     Final          Version 7.
+Top-level module name = fpga_uart_top.
+
+
+
+GSR instance connected to net set_c.
+Applying 200.000000 MHz constraint to all clocks
+
+WARNING - synthesis: No user .sdc file.
+Results of NGD DRC are available in fpga_uart_top_drc.log.
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/se5c00/data/se5clib.ngl'...
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/xo2c00a/data/xo2alib.ngl'...
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/xo2c00/data/xo2clib.ngl'...
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/mg5g00/data/mg5glib.ngl'...
+Loading NGL library '/home/pnieves/lscc/diamond/3.14/ispfpga/or5g00/data/orc5glib.ngl'...
+All blocks are expanded and NGD expansion is successful.
+Writing NGD file fpga_uart_impl1.ngd.
+
+################### Begin Area Report (fpga_uart_top)######################
+Number of register bits => 8 of 10021 (0 % )
+CCU2D => 5
+FD1P3AX => 8
+GSR => 1
+IB => 14
+LUT4 => 13
+OB => 8
+################### End Area Report ##################
+
+################### Begin BlackBox Report ######################
+TSALL => 1
+################### End BlackBox Report ##################
+
+################### Begin Clock Report ######################
+Clock Nets
+Number of Clocks: 1
+  Net : sysclk_c, loads : 8
+Clock Enable Nets
+Number of Clock Enables: 1
+Top 1 highest fanout Clock Enables:
+  Net : sysclk_c_enable_8, loads : 8
+Highest fanout non-clock nets
+Top 10 highest fanout non-clock nets:
+  Net : updwn_c, loads : 12
+  Net : reset_c, loads : 12
+  Net : sysclk_c_enable_8, loads : 8
+  Net : n285, loads : 8
+  Net : id_c, loads : 4
+  Net : action_c, loads : 4
+  Net : count_c_7, loads : 2
+  Net : count_c_6, loads : 2
+  Net : count_c_5, loads : 2
+  Net : count_c_4, loads : 2
+################### End Clock Report ##################
+
+Timing Report Summary
+--------------
+--------------------------------------------------------------------------------
+Constraint                              |   Constraint|       Actual|Levels
+--------------------------------------------------------------------------------
+                                        |             |             |
+create_clock -period 5.000000 -name     |             |             |
+clk0 [get_nets sysclk_c]                |  200.000 MHz|  191.681 MHz|     6 *
+                                        |             |             |
+--------------------------------------------------------------------------------
+
+
+1 constraints not met.
+
+
+Peak Memory Usage: 194.113  MB
+
+--------------------------------------------------------------
+Elapsed CPU time for LSE flow : 0.174  secs
+--------------------------------------------------------------

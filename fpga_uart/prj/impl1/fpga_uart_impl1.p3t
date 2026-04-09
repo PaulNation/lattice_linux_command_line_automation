@@ -1,0 +1,5 @@
+-rem
+-distrce
+-log "fpga_uart_impl1.log"
+-o "fpga_uart_impl1.csv"
+-pr "fpga_uart_impl1.prf"

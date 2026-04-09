@@ -1,0 +1,30 @@
+Usage: synthesis
+ -a <arch>
+ -d <device>
+ [-s <performance_grade>]
+ [-t <package_name>]
+ [{-p <searchpath>}]
+
+ -top <top_module_name>
+
+ -ver {<verilog_file.v>}
+
+ [-lib <libname>]
+ -vhd {<vhdl_file.vhd/vhdl>}
+
+ -ngd <ngd_file.ngd>
+ [-ngo <ngo_file.ngo>]
+
+ [-hdl_param < param_name param_value >]
+ [-vh2008]
+ [-optimization_goa   ....   te_regs <0|1(default)>]
+ [-loop_limit <max_loop_iter_cnt (default 1950)>]
+ [-twr_paths <timing_path_cnt>]
+ [-dt]
+ [-comp]
+ [-syn]
+ [-ifd]
+ [-f <project_file_name>]
+
+
+Valid architectures are:
