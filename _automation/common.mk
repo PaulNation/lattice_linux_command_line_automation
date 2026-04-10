@@ -1,8 +1,14 @@
-# _automation/common.mk — shared Make logic for all FPGA projects
+# _automation/common.mk — shared Make logic for all FPGA projects (BATCH FLOW)
 # Include this from project-level Makefiles only:
 #   include $(shell git rev-parse --show-toplevel)/_automation/common.mk
 #
 # Do NOT add build logic to project Makefiles. All policy lives here.
+# All targets use batch tools (synthesis, map, par, bitgen).
+
+# ── Output control ────────────────────────────────────────────────────────────
+# Set VERBOSE=1 to see live tool output while still logging
+# Usage: make syn VERBOSE=1
+VERBOSE    ?= 0
 
 # ── Environment check (must fire before any recipe) ───────────────────────────
 ifndef DIAMOND_ENV_SOURCED
@@ -12,8 +18,6 @@ endif
 # ── Project identity (derived entirely from filesystem) ───────────────────────
 PROJECT_DIR  := $(abspath $(CURDIR))
 PROJECT_NAME := $(notdir $(PROJECT_DIR))
-PRJ_DIR      := $(PROJECT_DIR)/prj
-PROJECT_LDF  := $(PRJ_DIR)/$(PROJECT_NAME).ldf
 AUTOMATION   := $(AUTOMATION_ROOT)
 META         := $(PROJECT_DIR)/project.meta
 
@@ -22,183 +26,330 @@ ifeq ($(wildcard $(META)),)
 $(error ERROR: project.meta not found in $(PROJECT_DIR))
 endif
 
-# ── Read hardware facts from project.meta ─────────────────────────────────────
-DEVICE      := $(shell grep '^DEVICE='      $(META) | cut -d= -f2)
-PACKAGE     := $(shell grep '^PACKAGE='     $(META) | cut -d= -f2)
-SPEED       := $(shell grep '^SPEED='       $(META) | cut -d= -f2)
-TOP_MODULE  := $(shell grep '^TOP_MODULE='  $(META) | cut -d= -f2)
-TOP_TB      ?= $(TOP_MODULE)_tb
+# ── Read hardware facts from project.meta (batch flow fields) ─────────────────
+ARCH         := $(shell grep '^ARCH='         $(META) | cut -d= -f2)
+DEVICE       := $(shell grep '^DEVICE='       $(META) | cut -d= -f2)
+PACKAGE      := $(shell grep '^PACKAGE='      $(META) | cut -d= -f2)
+PERF_GRADE   := $(shell grep '^PERF_GRADE='   $(META) | cut -d= -f2)
+OC           := $(shell grep '^OC='           $(META) | cut -d= -f2)
+TOP_MODULE   := $(shell grep '^TOP_MODULE='   $(META) | cut -d= -f2)
 
 # ── Source discovery (evaluated at Make parse time) ───────────────────────────
 RTL_SOURCES := $(shell cat $(PROJECT_DIR)/src/sources.f 2>/dev/null | \
     grep -v '^\s*\#' | grep -v '^\s*$$' | sed 's|^|$(PROJECT_DIR)/|')
 TB_SOURCES  := $(shell cat $(PROJECT_DIR)/tb/tb_files.f 2>/dev/null | \
     grep -v '^\s*\#' | grep -v '^\s*$$' | sed 's|^|$(PROJECT_DIR)/|')
-CONSTRAINTS := $(shell cat $(PROJECT_DIR)/syn/constraints.f 2>/dev/null | \
-    grep -v '^\s*\#' | grep -v '^\s*$$' | sed 's|^|$(PROJECT_DIR)/|')
 
-SYN_DEPS := $(RTL_SOURCES) $(CONSTRAINTS) $(META)
-PAR_DEPS := $(PROJECT_DIR)/syn/out/.syn_done $(CONSTRAINTS)
+# ── Detect testbench module name (auto-extract from first tb file) ─────────────
+TOP_TB := $(shell \
+  first_tb=$$(echo "$(TB_SOURCES)" | cut -d' ' -f1); \
+  if [ -f "$$first_tb" ]; then \
+    grep -m1 "^[[:space:]]*module[[:space:]]" "$$first_tb" | sed 's/.*module[[:space:]]\+\([a-zA-Z_][a-zA-Z0-9_]*\).*/\1/'; \
+  else \
+    echo "$(TOP_MODULE)_tb"; \
+  fi \
+)
+
+# ── Pin constraints (required for place-and-route) ─────────────────────────
+TOP_LPF := $(PROJECT_DIR)/par/top.lpf
+
+SYN_DEPS := $(RTL_SOURCES) $(META)
+PAR_DEPS := $(TOP_LPF)
 SIM_DEPS := $(RTL_SOURCES) $(TB_SOURCES)
 
 # ── Default goal ──────────────────────────────────────────────────────────────
 .DEFAULT_GOAL := help
 
 # ── Phony targets ─────────────────────────────────────────────────────────────
-.PHONY: all syn par sim syn-gui par-gui sim-gui regen_ip \
-        clean clean-syn clean-par help check-env create-project
+.PHONY: all syn par pgrm pgrm-bit pgrm-jed sim sim-gui \
+        clean clean-syn clean-par clean-pgrm clean-sim help check-env
 
-# ── Environment check target ──────────────────────────────────────────────────
+# ── Validation checks ─────────────────────────────────────────────────────────
 check-env:
 ifndef DIAMOND_ENV_SOURCED
 	$(error Environment not initialized. Run: source _automation/env.sh)
 endif
 
-# ── Project creation (idempotent — create_project.tcl skips if .ldf exists) ───
-create-project: $(PROJECT_LDF)
+# Validate project.meta fields exist
+ifndef ARCH
+	$(error ARCH not defined in project.meta)
+endif
+ifndef DEVICE
+	$(error DEVICE not defined in project.meta)
+endif
+ifndef PACKAGE
+	$(error PACKAGE not defined in project.meta)
+endif
+ifndef PERF_GRADE
+	$(error PERF_GRADE not defined in project.meta)
+endif
+ifndef OC
+	$(error OC not defined in project.meta)
+endif
 
-$(PROJECT_LDF):
-	@mkdir -p $(PRJ_DIR)
-	@echo "Creating Diamond project: $(PROJECT_NAME)"
-	@$(DIAMONDC) $(AUTOMATION)/tcl/create_project.tcl \
-	    $(PRJ_DIR) $(PROJECT_NAME) $(DEVICE) $(PACKAGE) $(SPEED)
+# ── Synthesis (batch mode) ──────────────────────────────────────────────────
+# Runs from syn/out/, invokes synthesis batch tool with RTL sources
+# Produces: syn/out/<ProjectName>_impl1.ngd
 
-# ── Synthesis ─────────────────────────────────────────────────────────────────
-$(PROJECT_DIR)/syn/out/.syn_done: $(SYN_DEPS)
+$(PROJECT_DIR)/syn/out/.syn_done: $(SYN_DEPS) | check-env
 	@mkdir -p $(PROJECT_DIR)/syn/logs $(PROJECT_DIR)/syn/out
 	$(eval _SYN_LOG := $(PROJECT_DIR)/syn/logs/syn_$(shell date +%Y%m%d_%H%M%S).log)
-	@echo "Running synthesis... Log: $(_SYN_LOG)"
-	@$(DIAMONDC) $(AUTOMATION)/tcl/syn.tcl \
-	    $(PROJECT_DIR) $(PROJECT_NAME) > $(_SYN_LOG) 2>&1 || \
-	    (echo "--- last 40 lines of $(_SYN_LOG) ---"; \
-	     tail -40 $(_SYN_LOG); exit 1)
+	@echo "[SYN] Running synthesis... Log: $(_SYN_LOG)"
+	@cd $(PROJECT_DIR)/syn/out && \
+	  if [ "$(VERBOSE)" = "1" ]; then \
+	    synthesis \
+	      -a "$(ARCH)" \
+	      -d $(DEVICE) \
+	      -t $(PACKAGE) \
+	      -s $(PERF_GRADE) \
+	      -top $(TOP_MODULE) \
+	      $(foreach f,$(RTL_SOURCES),-ver "$(f)") \
+	      -ngd $(PROJECT_NAME)_impl1.ngd 2>&1 | tee $(_SYN_LOG); \
+	  else \
+	    synthesis \
+	      -a "$(ARCH)" \
+	      -d $(DEVICE) \
+	      -t $(PACKAGE) \
+	      -s $(PERF_GRADE) \
+	      -top $(TOP_MODULE) \
+	      $(foreach f,$(RTL_SOURCES),-ver "$(f)") \
+	      -ngd $(PROJECT_NAME)_impl1.ngd > $(_SYN_LOG) 2>&1; \
+	  fi || (echo "Synthesis failed. Last 40 lines of $(_SYN_LOG):"; tail -40 $(_SYN_LOG); exit 1)
 	@touch $@
-	@echo "Synthesis complete. Log: $(_SYN_LOG)"
+	@echo "[SYN] Complete. Output: $(PROJECT_DIR)/syn/out/$(PROJECT_NAME)_impl1.ngd"
 
 syn: $(PROJECT_DIR)/syn/out/.syn_done
 
-# ── Place and route ───────────────────────────────────────────────────────────
-$(PROJECT_DIR)/par/out/.par_done: $(PAR_DEPS)
+# ── Place and Route (batch mode) ────────────────────────────────────────────
+# Runs map + par from par/out/, requires prior synthesis
+# Produces: par/out/<ProjectName>_impl1_par.ncd
+
+$(PROJECT_DIR)/par/out/.par_done: $(PAR_DEPS) | check-env
+	@if [ ! -f "$(PROJECT_DIR)/syn/out/.syn_done" ]; then \
+	  echo "ERROR: Synthesis not completed. Run 'make syn' first."; exit 1; \
+	fi
+	@if [ ! -f "$(PROJECT_DIR)/par/top.lpf" ]; then \
+	  echo "ERROR: par/top.lpf not found. Fill in pin assignments before running par."; exit 1; \
+	fi
 	@mkdir -p $(PROJECT_DIR)/par/logs $(PROJECT_DIR)/par/out
 	$(eval _PAR_LOG := $(PROJECT_DIR)/par/logs/par_$(shell date +%Y%m%d_%H%M%S).log)
-	@echo "Running place-and-route... Log: $(_PAR_LOG)"
-	@$(DIAMONDC) $(AUTOMATION)/tcl/par.tcl \
-	    $(PROJECT_DIR) $(PROJECT_NAME) > $(_PAR_LOG) 2>&1 || \
-	    (echo "--- last 40 lines of $(_PAR_LOG) ---"; \
-	     tail -40 $(_PAR_LOG); exit 1)
+	@echo "[MAP] Running map... Log: $(_PAR_LOG)"
+	@cd $(PROJECT_DIR)/par/out && \
+	  if [ "$(VERBOSE)" = "1" ]; then \
+	    map \
+	      -a "$(ARCH)" \
+	      -p $(DEVICE) \
+	      -t $(PACKAGE) \
+	      -s $(PERF_GRADE) \
+	      -oc $(OC) \
+	      ../../syn/out/$(PROJECT_NAME)_impl1.ngd \
+	      -mp "$(PROJECT_NAME)_impl1.mrp" \
+	      -o  "$(PROJECT_NAME)_impl1_map.ncd" \
+	      -pr "$(PROJECT_NAME)_impl1.prf" \
+	      -lpf "../top.lpf" \
+	      -c 0 2>&1 | tee $(_PAR_LOG); \
+	  else \
+	    map \
+	      -a "$(ARCH)" \
+	      -p $(DEVICE) \
+	      -t $(PACKAGE) \
+	      -s $(PERF_GRADE) \
+	      -oc $(OC) \
+	      ../../syn/out/$(PROJECT_NAME)_impl1.ngd \
+	      -mp "$(PROJECT_NAME)_impl1.mrp" \
+	      -o  "$(PROJECT_NAME)_impl1_map.ncd" \
+	      -pr "$(PROJECT_NAME)_impl1.prf" \
+	      -lpf "../top.lpf" \
+	      -c 0 >> $(_PAR_LOG) 2>&1; \
+	  fi || (echo "Map failed. Last 40 lines of $(_PAR_LOG):"; tail -40 $(_PAR_LOG); exit 1)
+	@echo "[PAR] Running place-and-route..."
+	@cd $(PROJECT_DIR)/par/out && \
+	  if [ "$(VERBOSE)" = "1" ]; then \
+	    par -w -l 5 -i 6 -t 1 -c 0 -e 0 \
+	      -exp parUseNBR=1:parCDP=0:parCDR=0:parPathBased=OFF:parASE=1 \
+	      $(PROJECT_NAME)_impl1_map.ncd \
+	      $(PROJECT_NAME)_impl1_par.ncd \
+	      $(PROJECT_NAME)_impl1.prf 2>&1 | tee -a $(_PAR_LOG); \
+	  else \
+	    par -w -l 5 -i 6 -t 1 -c 0 -e 0 \
+	      -exp parUseNBR=1:parCDP=0:parCDR=0:parPathBased=OFF:parASE=1 \
+	      $(PROJECT_NAME)_impl1_map.ncd \
+	      $(PROJECT_NAME)_impl1_par.ncd \
+	      $(PROJECT_NAME)_impl1.prf >> $(_PAR_LOG) 2>&1; \
+	  fi || (echo "P&R failed. Last 40 lines of $(_PAR_LOG):"; tail -40 $(_PAR_LOG); exit 1)
 	@touch $@
-	@echo "Place-and-route complete. Log: $(_PAR_LOG)"
+	@echo "[PAR] Complete. Output: $(PROJECT_DIR)/par/out/$(PROJECT_NAME)_impl1_par.ncd"
 
 par: $(PROJECT_DIR)/par/out/.par_done
 
-# ── Simulation (headless Questa Sim — GUI must never open here) ───────────────
-sim: check-env $(SIM_DEPS)
+# ── Programming (bitgen batch mode) ────────────────────────────────────────
+# Generates bitstream and/or JEDEC files
+# Requires prior P&R completion
+
+$(PROJECT_DIR)/pgrm/.bit_done: $(PROJECT_DIR)/par/out/.par_done | check-env
+	@if [ ! -f "$(PROJECT_DIR)/par/out/.par_done" ]; then \
+	  echo "ERROR: Place-and-route not completed. Run 'make par' first."; exit 1; \
+	fi
+	@mkdir -p $(PROJECT_DIR)/pgrm/logs
+	$(eval _PGRM_LOG := $(PROJECT_DIR)/pgrm/logs/pgrm_$(shell date +%Y%m%d_%H%M%S).log)
+	@echo "[PGRM-BIT] Generating bitstream... Log: $(_PGRM_LOG)"
+	@cd $(PROJECT_DIR)/pgrm && \
+	  if [ "$(VERBOSE)" = "1" ]; then \
+	    bitgen -w \
+	      "../par/out/$(PROJECT_NAME)_impl1_par.ncd" \
+	      "../par/out/$(PROJECT_NAME)_impl1.prf" 2>&1 | tee $(_PGRM_LOG); \
+	  else \
+	    bitgen -w \
+	      "../par/out/$(PROJECT_NAME)_impl1_par.ncd" \
+	      "../par/out/$(PROJECT_NAME)_impl1.prf" > $(_PGRM_LOG) 2>&1; \
+	  fi || (echo "Bitgen (bitstream) failed. Last 40 lines of $(_PGRM_LOG):"; tail -40 $(_PGRM_LOG); exit 1)
+	@cp $(PROJECT_DIR)/par/out/$(PROJECT_NAME)_impl1_par.bit $(PROJECT_DIR)/pgrm/$(PROJECT_NAME)_impl1_par.bit
+	@touch $@
+	@echo "[PGRM-BIT] Complete. Output: $(PROJECT_DIR)/pgrm/$(PROJECT_NAME)_impl1_par.bit"
+
+pgrm-bit: $(PROJECT_DIR)/pgrm/.bit_done
+
+$(PROJECT_DIR)/pgrm/.jed_done: $(PROJECT_DIR)/par/out/.par_done | check-env
+	@if [ ! -f "$(PROJECT_DIR)/par/out/.par_done" ]; then \
+	  echo "ERROR: Place-and-route not completed. Run 'make par' first."; exit 1; \
+	fi
+	@mkdir -p $(PROJECT_DIR)/pgrm/logs
+	$(eval _PGRM_LOG := $(PROJECT_DIR)/pgrm/logs/pgrm_$(shell date +%Y%m%d_%H%M%S).log)
+	@echo "[PGRM-JED] Generating JEDEC files... Log: $(_PGRM_LOG)"
+	@cd $(PROJECT_DIR)/pgrm && \
+	  if [ "$(VERBOSE)" = "1" ]; then \
+	    bitgen -w \
+	      "../par/out/$(PROJECT_NAME)_impl1_par.ncd" \
+	      -jedec \
+	      "../par/out/$(PROJECT_NAME)_impl1.prf" 2>&1 | tee $(_PGRM_LOG); \
+	  else \
+	    bitgen -w \
+	      "../par/out/$(PROJECT_NAME)_impl1_par.ncd" \
+	      -jedec \
+	      "../par/out/$(PROJECT_NAME)_impl1.prf" > $(_PGRM_LOG) 2>&1; \
+	  fi || (echo "Bitgen (JEDEC) failed. Last 40 lines of $(_PGRM_LOG):"; tail -40 $(_PGRM_LOG); exit 1)
+	@cp $(PROJECT_DIR)/par/out/$(PROJECT_NAME)_impl1_par.fea $(PROJECT_DIR)/pgrm/$(PROJECT_NAME)_impl1_par.fea
+	@cp $(PROJECT_DIR)/par/out/$(PROJECT_NAME)_impl1_par_a.jed $(PROJECT_DIR)/pgrm/$(PROJECT_NAME)_impl1_par_a.jed
+	@touch $@
+	@echo "[PGRM-JED] Complete. Outputs: $(PROJECT_DIR)/pgrm/$(PROJECT_NAME)_impl1_par.fea + $(PROJECT_NAME)_impl1_par_a.jed"
+
+pgrm-jed: $(PROJECT_DIR)/pgrm/.jed_done
+
+# ── Programming (combined) ────────────────────────────────────────────────
+pgrm: pgrm-bit pgrm-jed
+
+# ── Simulation (Questa headless or GUI) ────────────────────────────────────────
+# Generates sim/out/run.do (headless) and sim/out/run_gui.do (GUI) from RTL/TB sources
+# RTL_SOURCES and TB_SOURCES discovered from src/sources.f and tb/tb_files.f
+
+$(PROJECT_DIR)/sim/out/run.do: $(SIM_DEPS)
+	@mkdir -p $(PROJECT_DIR)/sim/out
+	@echo "Generating sim/out/run.do (headless mode)..."
+	@echo "project new . $(PROJECT_NAME)_sim rtl_work" > $(PROJECT_DIR)/sim/out/run.do
+	$(foreach src,$(RTL_SOURCES),@echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run.do; \
+	)
+	$(foreach src,$(TB_SOURCES),@echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run.do; \
+	)
+	@echo "project compileall" >> $(PROJECT_DIR)/sim/out/run.do
+	@echo "vsim work.$(TOP_TB)" >> $(PROJECT_DIR)/sim/out/run.do
+	@echo "run -all" >> $(PROJECT_DIR)/sim/out/run.do
+	@echo "exit" >> $(PROJECT_DIR)/sim/out/run.do
+
+$(PROJECT_DIR)/sim/out/run_gui.do: $(SIM_DEPS)
+	@mkdir -p $(PROJECT_DIR)/sim/out
+	@echo "Generating sim/out/run_gui.do (GUI mode)..."
+	@echo "project new . $(PROJECT_NAME)_sim rtl_work" > $(PROJECT_DIR)/sim/out/run_gui.do
+	$(foreach src,$(RTL_SOURCES),@echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run_gui.do; \
+	)
+	$(foreach src,$(TB_SOURCES),@echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run_gui.do; \
+	)
+	@echo "project compileall" >> $(PROJECT_DIR)/sim/out/run_gui.do
+	@echo "vsim -voptargs=+acc work.$(TOP_TB)" >> $(PROJECT_DIR)/sim/out/run_gui.do
+
+# Console mode simulation (headless)
+sim: $(PROJECT_DIR)/sim/out/run.do check-env
 	@mkdir -p $(PROJECT_DIR)/sim/logs $(PROJECT_DIR)/sim/out
 	$(eval _SIM_LOG := $(PROJECT_DIR)/sim/logs/sim_$(shell date +%Y%m%d_%H%M%S).log)
-	@echo "Running simulation... Log: $(_SIM_LOG)"
-	@tclsh $(AUTOMATION)/tcl/sim.tcl \
-	    $(PROJECT_DIR) $(PROJECT_NAME) $(TOP_TB) > $(_SIM_LOG) 2>&1 || \
-	    (echo "--- last 40 lines of $(_SIM_LOG) ---"; \
-	     tail -40 $(_SIM_LOG); exit 1)
-	@echo "Simulation complete. Log: $(_SIM_LOG)"
+	@echo "[SIM] Running simulation (headless)... Log: $(_SIM_LOG)"
+	@cd $(PROJECT_DIR)/sim/out && \
+	  if [ "$(VERBOSE)" = "1" ]; then \
+	    vsim -c -do run.do 2>&1 | tee $(_SIM_LOG); \
+	  else \
+	    vsim -c -do run.do > $(_SIM_LOG) 2>&1; \
+	  fi || (echo "Simulation failed. Last 40 lines of $(_SIM_LOG):"; tail -40 $(_SIM_LOG); exit 1)
+	@echo "[SIM] Complete. Log: $(_SIM_LOG)"
 
-# ── All (synthesis then place-and-route, fully headless) ──────────────────────
+# GUI mode simulation (interactive)
+sim-gui: $(PROJECT_DIR)/sim/out/run_gui.do check-env
+	@mkdir -p $(PROJECT_DIR)/sim/logs $(PROJECT_DIR)/sim/out
+	@echo "[SIM-GUI] Launching Questa GUI..."
+	@cd $(PROJECT_DIR)/sim/out && vsim -do run_gui.do
+
+# ── All (synthesis then place-and-route, fully headless) ──────────────────
 all: syn par
 
-# ── GUI targets (interactive use only — NEVER call from CI or make all) ───────
-#
-# WARNING: GUI targets do NOT write sentinel files (syn/out/.syn_done, etc.).
-# Sources added interactively in the GUI are NOT persisted —
-# the next headless make run re-syncs from .f files and removes any GUI changes.
-# GUI targets must never appear as prerequisites of any other target.
-
-syn-gui: check-env $(PROJECT_LDF)
-	@echo "WARNING: GUI mode — for interactive use only. Do not invoke from CI."
-	@echo "         Sources will be re-synced from src/sources.f before opening."
-	@echo "         Any files added in the GUI will be removed on the next make run."
-	@$(DIAMONDC) $(AUTOMATION)/tcl/sync_sources.tcl \
-	    $(PROJECT_DIR) $(PROJECT_NAME)
-	@$(DIAMOND_GUI) $(PROJECT_LDF) &
-
-par-gui: check-env $(PROJECT_LDF)
-	@echo "WARNING: GUI mode — for interactive use only. Do not invoke from CI."
-	@echo "         Requires prior synthesis output in syn/out/."
-	@if [ ! -f "$(PROJECT_DIR)/syn/out/.syn_done" ]; then \
-	    echo "ERROR: No synthesis output found. Run 'make syn' first." >&2; exit 1; \
-	fi
-	@$(DIAMONDC) $(AUTOMATION)/tcl/sync_sources.tcl \
-	    $(PROJECT_DIR) $(PROJECT_NAME)
-	@$(DIAMOND_GUI) $(PROJECT_LDF) &
-
-sim-gui: check-env $(PROJECT_LDF)
-	@echo "WARNING: GUI mode — for interactive use only. Do not invoke from CI."
-	@echo "         Compiling sources before opening Questa Sim GUI..."
-	@mkdir -p $(PROJECT_DIR)/sim/out $(PROJECT_DIR)/sim/logs
-	@$(QUESTA_BIN)/vlog \
-	    -work $(PROJECT_DIR)/sim/out/work \
-	    -f $(PROJECT_DIR)/src/sources.f \
-	    -f $(PROJECT_DIR)/tb/tb_files.f \
-	    2>&1 | tee $(PROJECT_DIR)/sim/logs/sim_gui_compile.log
-	@echo "Compilation complete. Opening Questa Sim GUI..."
-	@$(QUESTA_BIN)/vsim \
-	    -work $(PROJECT_DIR)/sim/out/work \
-	    $(TOP_TB) &
-
-# ── IP core regeneration (explicit only — never a dependency of syn) ──────────
-regen_ip: check-env $(PROJECT_LDF)
-	@echo "Regenerating IP cores for $(PROJECT_NAME)..."
-	@$(DIAMONDC) $(AUTOMATION)/tcl/regen_ip.tcl \
-	    $(PROJECT_DIR) $(PROJECT_NAME)
-
-# ── Clean targets ─────────────────────────────────────────────────────────────
+# ── Clean targets ────────────────────────────────────────────────────────
 clean:
 	@echo "Cleaning all artifacts for $(PROJECT_NAME)"
-	rm -rf $(PROJECT_DIR)/syn/out  $(PROJECT_DIR)/syn/logs
-	rm -rf $(PROJECT_DIR)/par/out  $(PROJECT_DIR)/par/logs
-	rm -rf $(PROJECT_DIR)/sim/out  $(PROJECT_DIR)/sim/logs
-	rm -rf $(PRJ_DIR)
+	rm -rf $(PROJECT_DIR)/syn/out && rm -f $(PROJECT_DIR)/syn/logs/*
+	rm -rf $(PROJECT_DIR)/par/out && rm -f $(PROJECT_DIR)/par/logs/*
+	rm -f  $(PROJECT_DIR)/pgrm/*.bit $(PROJECT_DIR)/pgrm/*.jed $(PROJECT_DIR)/pgrm/*.fea
+	rm -f $(PROJECT_DIR)/pgrm/logs/* $(PROJECT_DIR)/pgrm/.bit_done $(PROJECT_DIR)/pgrm/.jed_done
+	rm -rf $(PROJECT_DIR)/sim/out && rm -f $(PROJECT_DIR)/sim/logs/*
 
 clean-syn:
-	rm -rf $(PROJECT_DIR)/syn/out $(PROJECT_DIR)/syn/logs
+	rm -rf $(PROJECT_DIR)/syn/out && rm -f $(PROJECT_DIR)/syn/logs/*
 
 clean-par:
-	rm -rf $(PROJECT_DIR)/par/out $(PROJECT_DIR)/par/logs
+	rm -rf $(PROJECT_DIR)/par/out && rm -f $(PROJECT_DIR)/par/logs/*
 
-# ── Help ──────────────────────────────────────────────────────────────────────
+clean-pgrm:
+	rm -f  $(PROJECT_DIR)/pgrm/*.bit $(PROJECT_DIR)/pgrm/*.jed $(PROJECT_DIR)/pgrm/*.fea
+	rm -f $(PROJECT_DIR)/pgrm/logs/* $(PROJECT_DIR)/pgrm/.bit_done $(PROJECT_DIR)/pgrm/.jed_done
+
+clean-sim:
+	rm -f  $(PROJECT_DIR)/sim/out/run.do $(PROJECT_DIR)/sim/out/run_gui.do
+	rm -f  $(PROJECT_DIR)/sim/out/transcript $(PROJECT_DIR)/sim/out/modelsim.ini
+	rm -rf $(PROJECT_DIR)/sim/out/work $(PROJECT_DIR)/sim/out/rtl_work
+	rm -f  $(PROJECT_DIR)/sim/out/*.wlf $(PROJECT_DIR)/sim/out/*.log $(PROJECT_DIR)/sim/out/*.jou
+	rm -f  $(PROJECT_DIR)/sim/out/*.pb $(PROJECT_DIR)/sim/out/*.vstf
+	rm -f  $(PROJECT_DIR)/sim/out/*.vcd $(PROJECT_DIR)/sim/out/$(PROJECT_NAME)_sim.cr.mti $(PROJECT_DIR)/sim/out/$(PROJECT_NAME)_sim.mpf
+	rm -f $(PROJECT_DIR)/sim/logs/*
+
+# ── Help ─────────────────────────────────────────────────────────────────
 help:
 	@echo ""
-	@echo "Project: $(PROJECT_NAME)  [$(shell grep '^DEVICE=' $(META) | cut -d= -f2)-$(shell grep '^PACKAGE=' $(META) | cut -d= -f2) speed $(shell grep '^SPEED=' $(META) | cut -d= -f2)]"
+	@echo "Project: $(PROJECT_NAME)  [Device: $(shell grep '^DEVICE=' $(META) | cut -d= -f2)]"
 	@echo "========================================================="
 	@echo ""
 	@echo "Environment (run once per shell session, from repo root):"
-	@echo "  source _automation/env.sh    Initialize Diamond + Questa Sim environment"
+	@echo "  source _automation/env.sh    Initialize Diamond environment"
 	@echo ""
-	@echo "Build:"
-	@echo "  make create-project          Create the Diamond project in prj/ (run once)"
+	@echo "Build (default: silent mode; use VERBOSE=1 for live output):"
 	@echo "  make all                     Run synthesis then place-and-route"
-	@echo "  make syn                     Synthesize RTL — headless (reads src/sources.f)"
-	@echo "  make par                     Place, route, generate bitstream — headless"
+	@echo "  make syn [VERBOSE=1]         Synthesize RTL — batch mode"
+	@echo "  make par [VERBOSE=1]         Map + place-and-route — batch mode"
+	@echo ""
+	@echo "Programming:"
+	@echo "  make pgrm [VERBOSE=1]        Generate bitstream AND JEDEC files"
+	@echo "  make pgrm-bit [VERBOSE=1]    Generate bitstream only (.bit)"
+	@echo "  make pgrm-jed [VERBOSE=1]    Generate JEDEC files only (.fea + .jed)"
 	@echo ""
 	@echo "Simulation:"
-	@echo "  make sim                     Compile and run testbench — headless (Questa Sim)"
-	@echo ""
-	@echo "Interactive GUI (not for CI):"
-	@echo "  make syn-gui                 Sync sources, open Diamond GUI for synthesis"
-	@echo "  make par-gui                 Sync sources, open Diamond GUI for place-and-route"
-	@echo "  make sim-gui                 Compile sources, open Questa Sim GUI with design loaded"
-	@echo ""
-	@echo "IP Cores:"
-	@echo "  make regen_ip                Regenerate Diamond IP cores (explicit only)"
+	@echo "  make sim [VERBOSE=1]         Compile and run testbench — console (Questa Sim)"
+	@echo "  make sim-gui                 Compile and run testbench — interactive GUI"
 	@echo ""
 	@echo "Cleanup:"
-	@echo "  make clean                   Remove all artifacts and the .ldf project file"
+	@echo "  make clean                   Remove all artifacts"
 	@echo "  make clean-syn               Remove synthesis artifacts only"
 	@echo "  make clean-par               Remove place-and-route artifacts only"
+	@echo "  make clean-pgrm              Remove programming artifacts only"
+	@echo "  make clean-sim               Remove simulation artifacts only"
 	@echo ""
 	@echo "Help:"
 	@echo "  make help                    Show this message"
 	@echo ""
-	@echo "Source files:  src/sources.f       Constraint files: syn/constraints.f"
-	@echo "Testbench:     tb/tb_files.f       Device config:    project.meta"
-	@echo "Build output:  syn/out/ par/out/ sim/out/    Logs: syn/logs/ par/logs/ sim/logs/"
+	@echo "Config:  project.meta  Pin constraints: par/top.lpf"
+	@echo "Sources: src/sources.f  Testbench: tb/tb_files.f"
+	@echo "Outputs: syn/out/ par/out/ pgrm/    Logs: syn/logs/ par/logs/ pgrm/logs/"
 	@echo ""

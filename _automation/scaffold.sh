@@ -9,9 +9,11 @@ set -euo pipefail
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
 PROJECT="${1:-}"
-DEVICE="${2:-DEVICE_TBD}"
-PACKAGE="${3:-PACKAGE_TBD}"
-SPEED="${4:-0}"
+ARCH="${2:-MachXO3D}"
+DEVICE="${3:-LCMXO3D-9400HC}"
+PACKAGE="${4:-CABGA256}"
+PERF_GRADE="${5:-5}"
+OC="${6:-Commercial}"
 
 if [ -z "$PROJECT" ]; then
   echo "ERROR: project name argument is required." >&2
@@ -43,23 +45,25 @@ PROJECT_LOWER="$(echo "$PROJECT" | tr '[:upper:]' '[:lower:]')"
 
 # ── Rule 3 — Create directory tree ───────────────────────────────────────────
 mkdir -p \
-  "$PROJECT_DIR/prj" \
   "$PROJECT_DIR/src" \
   "$PROJECT_DIR/tb" \
   "$PROJECT_DIR/syn/out" \
   "$PROJECT_DIR/syn/logs" \
   "$PROJECT_DIR/par/out" \
   "$PROJECT_DIR/par/logs" \
+  "$PROJECT_DIR/pgrm/logs" \
   "$PROJECT_DIR/sim/out" \
   "$PROJECT_DIR/sim/logs"
 
 # ── Rule 4 — Write boilerplate files ─────────────────────────────────────────
 
-# project.meta
+# project.meta (batch flow fields: ARCH, PERF_GRADE, OC)
 cat > "$PROJECT_DIR/project.meta" <<EOF
+ARCH=$ARCH
 DEVICE=$DEVICE
 PACKAGE=$PACKAGE
-SPEED=$SPEED
+PERF_GRADE=$PERF_GRADE
+OC=$OC
 DIAMOND_MIN_VERSION=3.14
 TOP_MODULE=${PROJECT_LOWER}_top
 SIM_TOOL=questa
@@ -131,14 +135,8 @@ EOF
 # Fix the placeholder comment in the first line of the testbench
 sed -i "s|__TB_PLACEHOLDER__|${PROJECT_LOWER}|g" "$PROJECT_DIR/tb/${PROJECT_LOWER}_tb.sv"
 
-# syn/constraints.f
-cat > "$PROJECT_DIR/syn/constraints.f" <<EOF
-# Constraint files — one path per line, relative to project root
-syn/top.lpf
-EOF
-
-# syn/top.lpf  (skeleton pin constraints)
-cat > "$PROJECT_DIR/syn/top.lpf" <<EOF
+# par/top.lpf  (skeleton pin constraints — placed in par/ since only used by map/par)
+cat > "$PROJECT_DIR/par/top.lpf" <<EOF
 # top.lpf — Lattice Diamond pin constraint file
 # Reference: Lattice Diamond User Guide, Appendix A
 #
@@ -155,13 +153,17 @@ cat > "$PROJECT_DIR/Makefile" <<EOF
 include \$(shell git rev-parse --show-toplevel)/_automation/common.mk
 EOF
 
-# .gitignore (project-level — full specification per SPEC.md)
+# .gitignore (project-level — batch flow version with pgrm artifacts)
 cat > "$PROJECT_DIR/.gitignore" <<'EOF'
 # Flow build artifacts — each flow owns its own out/ and logs/
 syn/out/
 syn/logs/
 par/out/
 par/logs/
+pgrm/*.bit
+pgrm/*.jed
+pgrm/*.fea
+pgrm/logs/
 sim/out/
 sim/logs/
 
@@ -183,7 +185,7 @@ sim/logs/
 *_impl*/
 *.bsn
 
-# Diamond project backup
+# Diamond project backup (batch flow doesn't create .ldf, but kept for reference)
 *.ldf.bak
 
 # Diamond work directories
@@ -203,29 +205,29 @@ EOF
 # ── Rule 5 — Print success summary ───────────────────────────────────────────
 echo ""
 echo "Created project: $PROJECT"
-echo "  $PROJECT/prj/             (empty — populated by make create-project)"
 echo "  $PROJECT/project.meta"
 echo "  $PROJECT/src/sources.f"
 echo "  $PROJECT/src/${PROJECT_LOWER}_top.v"
 echo "  $PROJECT/tb/tb_files.f"
 echo "  $PROJECT/tb/${PROJECT_LOWER}_tb.sv"
-echo "  $PROJECT/syn/constraints.f"
-echo "  $PROJECT/syn/top.lpf"
+echo "  $PROJECT/par/top.lpf          (pin constraints for map/par)"
+echo "  $PROJECT/pgrm/               (batch bitgen directory)"
 echo "  $PROJECT/Makefile"
 echo "  $PROJECT/.gitignore"
 
-if [ "$DEVICE" = "DEVICE_TBD" ] || [ "$PACKAGE" = "PACKAGE_TBD" ] || [ "$SPEED" = "0" ]; then
+if [ "$ARCH" = "MachXO3D_TBD" ] || [ "$DEVICE" = "LCMXO3D-9400HC_TBD" ]; then
   echo ""
-  echo "WARNING: Fill in DEVICE, PACKAGE, and SPEED in $PROJECT/project.meta before building."
+  echo "WARNING: Fill in ARCH, DEVICE, PACKAGE, PERF_GRADE, OC in $PROJECT/project.meta before building."
 fi
 
 echo ""
 echo "Next steps:"
-echo "  1. Fill in $PROJECT/project.meta  (DEVICE, PACKAGE, SPEED)"
-echo "  2. Fill in $PROJECT/syn/top.lpf   (pin assignments)"
+echo "  1. Fill in $PROJECT/project.meta  (ARCH, DEVICE, PACKAGE, PERF_GRADE, OC)"
+echo "  2. Fill in $PROJECT/par/top.lpf   (pin assignments)"
 echo "  3. Add RTL to $PROJECT/src/       and list files in src/sources.f"
 echo "  4. cd $PROJECT"
 echo "  5. source ../_automation/env.sh"
-echo "  6. make create-project            (creates prj/ — run once)"
-echo "  7. make syn"
+echo "  6. make syn                       (runs synthesis batch tool)"
+echo "  7. make par                       (runs map + par batch tools)"
+echo "  8. make pgrm                      (generates bitstream + JEDEC)"
 echo ""

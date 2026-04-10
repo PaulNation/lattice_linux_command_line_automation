@@ -3,6 +3,10 @@ syn/out/
 syn/logs/
 par/out/
 par/logs/
+pgrm/*.bit
+pgrm/*.jed
+pgrm/*.fea
+pgrm/logs/
 sim/out/
 sim/logs/
 
@@ -24,7 +28,7 @@ sim/logs/
 *_impl*/
 *.bsn
 
-# Diamond project backup
+# Diamond project backup (batch flow doesn't create .ldf, but kept for reference)
 *.ldf.bak
 
 # Diamond work directories

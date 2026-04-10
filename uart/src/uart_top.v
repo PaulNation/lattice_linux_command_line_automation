@@ -3,12 +3,39 @@
 // Fill in ports and logic before running make syn.
 
 module uart_top (
-    input  wire clk,
-    input  wire rst_n
-    
-    // TODO: add ports
-);
+    input wire sysclk,
+    input wire updwn,
+    input wire id,
+    input wire reset,
+    input wire set,
+    input wire action,
+    input wire [7:0] data,
+    output reg [7:0] count
+  );
 
-    // TODO: add logic
+  always @(posedge sysclk or negedge set) begin
+    if (~set) begin
+      count <= 8'h00;
+    end
+    else begin
+      casez ({updwn, id, reset, action})  // Concatenate input signals into a 4-bit vector
+        4'b0001: begin
+          count <= 8'hFF;
+        end
+        4'b0010: begin
+          count <= data;
+        end
+        4'b1000: begin
+          count <= count + 8'h01;
+        end
+        4'b0100: begin
+          count <= count - 8'h01;
+        end
+        default: begin
+          count <= count;
+        end
+      endcase
+    end
+  end
 
 endmodule
