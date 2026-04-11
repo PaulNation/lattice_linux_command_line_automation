@@ -12,7 +12,7 @@ VERBOSE    ?= 0
 
 # ── Environment check (must fire before any recipe) ───────────────────────────
 ifndef DIAMOND_ENV_SOURCED
-$(error Environment not initialized. Run: source _automation/env.sh)
+$(error Environment not initialized. Run: source ../_automation/env.sh)
 endif
 
 # ── Project identity (derived entirely from filesystem) ───────────────────────
@@ -61,7 +61,7 @@ SIM_DEPS := $(RTL_SOURCES) $(TB_SOURCES)
 .DEFAULT_GOAL := help
 
 # ── Phony targets ─────────────────────────────────────────────────────────────
-.PHONY: all syn par pgrm pgrm-bit pgrm-jed sim sim-gui \
+.PHONY: all syn par pgrm pgrm-bit pgrm-jed sim sim-gui lint \
         clean clean-syn clean-par clean-pgrm clean-sim help check-env
 
 # ── Validation checks ─────────────────────────────────────────────────────────
@@ -285,6 +285,13 @@ sim-gui: $(PROJECT_DIR)/sim/out/run_gui.do check-env
 	@echo "[SIM-GUI] Launching Questa GUI..."
 	@cd $(PROJECT_DIR)/sim/out && vsim -do run_gui.do
 
+# ── Linting (Verilator) ────────────────────────────────────────────────────────
+# Runs static analysis on RTL and testbench sources
+lint: check-env
+	@echo "[LINT] Running Verilator linting on RTL and testbench..."
+	verilator --lint-only -Wall $(RTL_SOURCES) $(TB_SOURCES)
+	@echo "[LINT] Complete."
+
 # ── All (synthesis then place-and-route, fully headless) ──────────────────
 all: syn par
 
@@ -298,14 +305,14 @@ clean:
 	rm -rf $(PROJECT_DIR)/sim/out && rm -f $(PROJECT_DIR)/sim/logs/*
 
 clean-syn:
-	rm -rf $(PROJECT_DIR)/syn/out && rm -f $(PROJECT_DIR)/syn/logs/*
+	rm -rf $(PROJECT_DIR)/syn/out
 
 clean-par:
-	rm -rf $(PROJECT_DIR)/par/out && rm -f $(PROJECT_DIR)/par/logs/*
+	rm -rf $(PROJECT_DIR)/par/out
 
 clean-pgrm:
 	rm -f  $(PROJECT_DIR)/pgrm/*.bit $(PROJECT_DIR)/pgrm/*.jed $(PROJECT_DIR)/pgrm/*.fea
-	rm -f $(PROJECT_DIR)/pgrm/logs/* $(PROJECT_DIR)/pgrm/.bit_done $(PROJECT_DIR)/pgrm/.jed_done
+	rm -f  $(PROJECT_DIR)/pgrm/.bit_done $(PROJECT_DIR)/pgrm/.jed_done
 
 clean-sim:
 	rm -f  $(PROJECT_DIR)/sim/out/run.do $(PROJECT_DIR)/sim/out/run_gui.do
@@ -314,7 +321,6 @@ clean-sim:
 	rm -f  $(PROJECT_DIR)/sim/out/*.wlf $(PROJECT_DIR)/sim/out/*.log $(PROJECT_DIR)/sim/out/*.jou
 	rm -f  $(PROJECT_DIR)/sim/out/*.pb $(PROJECT_DIR)/sim/out/*.vstf
 	rm -f  $(PROJECT_DIR)/sim/out/*.vcd $(PROJECT_DIR)/sim/out/$(PROJECT_NAME)_sim.cr.mti $(PROJECT_DIR)/sim/out/$(PROJECT_NAME)_sim.mpf
-	rm -f $(PROJECT_DIR)/sim/logs/*
 
 # ── Help ─────────────────────────────────────────────────────────────────
 help:
@@ -338,6 +344,9 @@ help:
 	@echo "Simulation:"
 	@echo "  make sim [VERBOSE=1]         Compile and run testbench — console (Questa Sim)"
 	@echo "  make sim-gui                 Compile and run testbench — interactive GUI"
+	@echo ""
+	@echo "Linting:"
+	@echo "  make lint                    Run Verilator linting on RTL and testbench"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean                   Remove all artifacts"
