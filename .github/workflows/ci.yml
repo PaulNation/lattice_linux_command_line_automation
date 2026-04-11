@@ -1,4 +1,4 @@
-name: FPGA CI
+name: EDA CI
 
 on:
   pull_request:
@@ -28,7 +28,7 @@ jobs:
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
-      fail-fast: false  # don't cancel other projects if one fails
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - name: Create paths.cfg
@@ -81,11 +81,12 @@ jobs:
       - name: Synthesize — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make syn"
-      - name: Upload syn output — ${{ matrix.project }}   # ← upload after syn
+      - name: Upload syn output — ${{ matrix.project }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-syn
-          path: ${{ matrix.project }}/syn/
+          path: ${{ matrix.project }}/syn/out/
+          include-hidden-files: true
 
   # ── PAR ────────────────────────────────────────────────────────────────────
   par:
@@ -104,22 +105,23 @@ jobs:
           DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
           QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
           EOF
-      - name: Download syn output — ${{ matrix.project }}  # ← restore before par
+      - name: Download syn output — ${{ matrix.project }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.project }}-syn
-          path: ${{ matrix.project }}/syn/
+          path: ${{ matrix.project }}/syn/out/
       - name: Place and Route — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make par"
       - name: Check Timing — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: grep -rl "All constraints were met" par/logs/ || exit 1
-      - name: Upload par output — ${{ matrix.project }}   # ← upload for bitgen
+      - name: Upload par output — ${{ matrix.project }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-par
-          path: ${{ matrix.project }}/par/
+          path: ${{ matrix.project }}/par/out/
+          include-hidden-files: true
 
   # ── Bitgen ─────────────────────────────────────────────────────────────────
   bitgen:
@@ -138,11 +140,11 @@ jobs:
           DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
           QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
           EOF
-      - name: Download par output — ${{ matrix.project }}  # ← restore before bitgen
+      - name: Download par output — ${{ matrix.project }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.project }}-par
-          path: ${{ matrix.project }}/par/
+          path: ${{ matrix.project }}/par/out/
       - name: Generate Bitfile — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make pgrm"
