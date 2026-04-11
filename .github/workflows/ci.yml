@@ -1,0 +1,141 @@
+name: FPGA CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  # ── Discover all projects dynamically ──────────────────────────────────────
+  discover:
+    runs-on: self-hosted
+    outputs:
+      projects: ${{ steps.find.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find all projects
+        id: find
+        run: |
+          projects=$(make list | grep -E '^\s+\w' | awk '{print $1}' | jq -R -s -c 'split("\n")[:-1]')
+          echo "projects=$projects" >> $GITHUB_OUTPUT
+          echo "Found projects: $projects"
+
+  # ── Lint ───────────────────────────────────────────────────────────────────
+  lint:
+    runs-on: self-hosted
+    needs: discover
+    container:
+      image: diamond-lattice:latest
+    strategy:
+      matrix:
+        project: ${{ fromJson(needs.discover.outputs.projects) }}
+      fail-fast: false  # don't cancel other projects if one fails
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create paths.cfg
+        run: |
+          cat > _automation/paths.cfg << EOF
+          DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
+          QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
+          EOF
+      - name: Lint — ${{ matrix.project }}
+        working-directory: ${{ matrix.project }}
+        run: bash -c "source ../_automation/env.sh && make lint"
+
+  # ── Simulate ───────────────────────────────────────────────────────────────
+  simulate:
+    runs-on: self-hosted
+    needs: lint
+    container:
+      image: diamond-lattice:latest
+    strategy:
+      matrix:
+        project: ${{ fromJson(needs.discover.outputs.projects) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create paths.cfg
+        run: |
+          cat > _automation/paths.cfg << EOF
+          DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
+          QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
+          EOF
+      - name: Simulate — ${{ matrix.project }}
+        working-directory: ${{ matrix.project }}
+        run: bash -c "source ../_automation/env.sh && make sim"
+
+  # ── Synthesize (main branch only) ─────────────────────────────────────────
+  synthesize:
+    runs-on: self-hosted
+    needs: simulate
+    if: github.ref == 'refs/heads/main'
+    container:
+      image: diamond-lattice:latest
+    strategy:
+      matrix:
+        project: ${{ fromJson(needs.discover.outputs.projects) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create paths.cfg
+        run: |
+          cat > _automation/paths.cfg << EOF
+          DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
+          QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
+          EOF
+      - name: Synthesize — ${{ matrix.project }}
+        working-directory: ${{ matrix.project }}
+        run: bash -c "source ../_automation/env.sh && make syn"
+
+  # ── PAR ────────────────────────────────────────────────────────────────────
+  par:
+    runs-on: self-hosted
+    needs: synthesize
+    container:
+      image: diamond-lattice:latest
+    strategy:
+      matrix:
+        project: ${{ fromJson(needs.discover.outputs.projects) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create paths.cfg
+        run: |
+          cat > _automation/paths.cfg << EOF
+          DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
+          QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
+          EOF
+      - name: Place and Route — ${{ matrix.project }}
+        working-directory: ${{ matrix.project }}
+        run: bash -c "source ../_automation/env.sh && make par"
+      - name: Check Timing — ${{ matrix.project }}
+        working-directory: ${{ matrix.project }}
+        run: grep -rl "All constraints were met" par/logs/ || exit 1
+
+  # ── Bitgen ─────────────────────────────────────────────────────────────────
+  bitgen:
+    runs-on: self-hosted
+    needs: par
+    container:
+      image: diamond-lattice:latest
+    strategy:
+      matrix:
+        project: ${{ fromJson(needs.discover.outputs.projects) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create paths.cfg
+        run: |
+          cat > _automation/paths.cfg << EOF
+          DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
+          QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
+          EOF
+      - name: Generate Bitfile — ${{ matrix.project }}
+        working-directory: ${{ matrix.project }}
+        run: bash -c "source ../_automation/env.sh && make pgrm"
+      - name: Upload Bitfile — ${{ matrix.project }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-bitfile
+          path: ${{ matrix.project }}/pgrm/*.bit
