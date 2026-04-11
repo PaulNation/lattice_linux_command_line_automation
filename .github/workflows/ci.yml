@@ -115,7 +115,7 @@ jobs:
         run: bash -c "source ../_automation/env.sh && make par"
       - name: Check Timing — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
-        run: grep -rl "All constraints were met" par/logs/ || exit 1
+        run: grep -rl "PAR_SUMMARY::Number of errors = 0" par/logs/ || exit 1
       - name: Upload par output — ${{ matrix.project }}
         uses: actions/upload-artifact@v4
         with:
