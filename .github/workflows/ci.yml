@@ -44,7 +44,7 @@ jobs:
   # ── Simulate ───────────────────────────────────────────────────────────────
   simulate:
     runs-on: self-hosted
-    needs: lint
+    needs: [discover, lint]
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
@@ -64,7 +64,7 @@ jobs:
   # ── Synthesize (main branch only) ─────────────────────────────────────────
   synthesize:
     runs-on: self-hosted
-    needs: simulate
+    needs: [discover, simulate]
     if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
@@ -85,7 +85,7 @@ jobs:
   # ── PAR ────────────────────────────────────────────────────────────────────
   par:
     runs-on: self-hosted
-    needs: synthesize
+    needs: [discover, synthesize]
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
@@ -108,7 +108,7 @@ jobs:
   # ── Bitgen ─────────────────────────────────────────────────────────────────
   bitgen:
     runs-on: self-hosted
-    needs: par
+    needs: [discover, par]
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
