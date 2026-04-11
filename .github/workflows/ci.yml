@@ -25,8 +25,6 @@ jobs:
   lint:
     runs-on: self-hosted
     needs: discover
-    container:
-      image: localhost:5000/diamond-lattice:latest
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
@@ -47,8 +45,6 @@ jobs:
   simulate:
     runs-on: self-hosted
     needs: lint
-    container:
-      image: localhost:5000/diamond-lattice:latest
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
@@ -70,8 +66,6 @@ jobs:
     runs-on: self-hosted
     needs: simulate
     if: github.ref == 'refs/heads/main'
-    container:
-      image: localhost:5000/diamond-lattice:latest
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
@@ -92,8 +86,6 @@ jobs:
   par:
     runs-on: self-hosted
     needs: synthesize
-    container:
-      image: localhost:5000/diamond-lattice:latest
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
@@ -117,8 +109,6 @@ jobs:
   bitgen:
     runs-on: self-hosted
     needs: par
-    container:
-      image: localhost:5000/diamond-lattice:latest
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
