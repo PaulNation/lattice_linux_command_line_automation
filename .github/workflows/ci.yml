@@ -41,27 +41,7 @@ jobs:
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make lint"
 
-  # ── Simulate ───────────────────────────────────────────────────────────────
-  simulate:
-    runs-on: self-hosted
-    needs: [discover, lint]
-    strategy:
-      matrix:
-        project: ${{ fromJson(needs.discover.outputs.projects) }}
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create paths.cfg
-        run: |
-          cat > _automation/paths.cfg << EOF
-          DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
-          QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
-          EOF
-      - name: Simulate — ${{ matrix.project }}
-        working-directory: ${{ matrix.project }}
-        run: bash -c "source ../_automation/env.sh && make sim"
-
-  # ── Synthesize (main branch only) ─────────────────────────────────────────
+  # ── Synthesize ─────────────────────────────────────────────────────────────
   synthesize:
     runs-on: self-hosted
     needs: [discover, simulate]
@@ -81,11 +61,17 @@ jobs:
       - name: Synthesize — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make syn"
+      - name: Upload syn output — ${{ matrix.project }}   # ← upload after syn
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-syn
+          path: ${{ matrix.project }}/syn/
 
   # ── PAR ────────────────────────────────────────────────────────────────────
   par:
     runs-on: self-hosted
     needs: [discover, synthesize]
+    if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
@@ -98,17 +84,28 @@ jobs:
           DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
           QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
           EOF
+      - name: Download syn output — ${{ matrix.project }}  # ← restore before par
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.project }}-syn
+          path: ${{ matrix.project }}/syn/
       - name: Place and Route — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make par"
       - name: Check Timing — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: grep -rl "All constraints were met" par/logs/ || exit 1
+      - name: Upload par output — ${{ matrix.project }}   # ← upload for bitgen
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-par
+          path: ${{ matrix.project }}/par/
 
   # ── Bitgen ─────────────────────────────────────────────────────────────────
   bitgen:
     runs-on: self-hosted
     needs: [discover, par]
+    if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
@@ -121,6 +118,11 @@ jobs:
           DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
           QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
           EOF
+      - name: Download par output — ${{ matrix.project }}  # ← restore before bitgen
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.project }}-par
+          path: ${{ matrix.project }}/par/
       - name: Generate Bitfile — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make pgrm"
