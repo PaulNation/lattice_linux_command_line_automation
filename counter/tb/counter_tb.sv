@@ -17,7 +17,7 @@ module counter_tb;
   wire [7:0] count;
 
   // Instantiate DUT
-  uart_top dut (
+  counter_top dut (
     .sysclk(sysclk),
     .updwn(updwn),
     .id(id),
