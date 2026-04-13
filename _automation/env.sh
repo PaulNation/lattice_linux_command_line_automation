@@ -83,6 +83,18 @@ done
 export PATH="$QUESTA_BIN:$PATH"
 export QUESTA_BIN
 
+# ── Step 6a — Locate and add Verilator to PATH ───────────────────────────────
+# Check standard locations for oss-cad-suite (GitHub Actions runner common location)
+OSS_CAD_SUITE="${HOME}/oss-cad-suite/bin:${OSS_CAD_SUITE_BIN:+${OSS_CAD_SUITE_BIN}}"
+if [ -d "${HOME}/oss-cad-suite/bin" ]; then
+  export PATH="${HOME}/oss-cad-suite/bin:$PATH"
+elif command -v verilator &>/dev/null; then
+  # Verilator already in PATH
+  :
+else
+  echo "WARNING: verilator not found (checked ${HOME}/oss-cad-suite/bin and PATH)" >&2
+fi
+
 # ── Step 6 — Export environment markers ──────────────────────────────────────
 export DIAMOND_BIN                           # path to bin/lin64/ — headless + GUI
 export DIAMOND_GUI="$DIAMOND_BIN/diamond"   # GUI binary, distinct from diamondc

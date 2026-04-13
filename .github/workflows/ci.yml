@@ -37,6 +37,8 @@ jobs:
           DIAMOND_INSTALL=/usr/local/lscc/diamond/3.14
           QUESTA_BIN=/usr/local/lscc/diamond/3.14/questasim/linux_x86_64
           EOF
+      - name: Add oss-cad-suite to PATH
+        run: echo "${HOME}/oss-cad-suite/bin" >> $GITHUB_PATH
       - name: Lint — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make lint"
