@@ -246,10 +246,8 @@ $(PROJECT_DIR)/sim/out/run.do: $(SIM_DEPS)
 	@mkdir -p $(PROJECT_DIR)/sim/out
 	@echo "Generating sim/out/run.do (headless mode)..."
 	@echo "project new . $(PROJECT_NAME)_sim rtl_work" > $(PROJECT_DIR)/sim/out/run.do
-	$(foreach src,$(RTL_SOURCES),@echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run.do; \
-	)
-	$(foreach src,$(TB_SOURCES),@echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run.do; \
-	)
+	@$(foreach src,$(RTL_SOURCES),echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run.do; )
+	@$(foreach src,$(TB_SOURCES),echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run.do; )
 	@echo "project compileall" >> $(PROJECT_DIR)/sim/out/run.do
 	@echo "vsim work.$(TOP_TB)" >> $(PROJECT_DIR)/sim/out/run.do
 	@echo "run -all" >> $(PROJECT_DIR)/sim/out/run.do
@@ -259,10 +257,8 @@ $(PROJECT_DIR)/sim/out/run_gui.do: $(SIM_DEPS)
 	@mkdir -p $(PROJECT_DIR)/sim/out
 	@echo "Generating sim/out/run_gui.do (GUI mode)..."
 	@echo "project new . $(PROJECT_NAME)_sim rtl_work" > $(PROJECT_DIR)/sim/out/run_gui.do
-	$(foreach src,$(RTL_SOURCES),@echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run_gui.do; \
-	)
-	$(foreach src,$(TB_SOURCES),@echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run_gui.do; \
-	)
+	@$(foreach src,$(RTL_SOURCES),echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run_gui.do; )
+	@$(foreach src,$(TB_SOURCES),echo "project addfile $(src)" >> $(PROJECT_DIR)/sim/out/run_gui.do; )
 	@echo "project compileall" >> $(PROJECT_DIR)/sim/out/run_gui.do
 	@echo "vsim -voptargs=+acc work.$(TOP_TB)" >> $(PROJECT_DIR)/sim/out/run_gui.do
 

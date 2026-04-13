@@ -148,8 +148,3 @@ jobs:
       - name: Generate Bitfile — ${{ matrix.project }}
         working-directory: ${{ matrix.project }}
         run: bash -c "source ../_automation/env.sh && make pgrm"
-      - name: Upload Bitfile — ${{ matrix.project }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.project }}-bitfile
-          path: ${{ matrix.project }}/pgrm/*.bit

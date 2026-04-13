@@ -2,145 +2,81 @@
 `timescale 1ns/1ps
 
 module uart_tb;
-initial begin
-    $dumpfile("trace.vcd");
-    $dumpvars(0, uart_tb);
-  end
-  // Testbench signals
-  reg sysclk;
-  reg updwn;
-  reg id;
-  reg reset;
-  reg set;
-  reg action;
-  reg [7:0] data;
-  wire [7:0] count;
+    /* verilator lint_off UNUSEDSIGNAL */
+    /* verilator lint_off UNDRIVEN */
+    // Testbench signals
+    reg clk;
+    reg [1:0] sw;
+    wire RsTx;
+    wire baud_clk;
+    wire b_rate;
+    wire [6:0] seg;
+    wire dp;
+    wire [3:0] an;
+    wire [1:0] led;
+    wire debug;
+    reg RsRx;
+    /* verilator lint_on UNDRIVEN */
+    /* verilator lint_on UNUSEDSIGNAL */
+    
+    // Instantiate DUT
+    uart_top dut (
+        .clk(clk),
+        .sw(sw),
+        .RsTx(RsTx),
+        .seg(seg),
+        .dp(dp),
+        .an(an),
+        .led(led),
+        .RsRx(RsRx),
+        .debug(debug)
+    );
 
-  // Instantiate DUT
-  uart_top dut (
-    .sysclk(sysclk),
-    .updwn(updwn),
-    .id(id),
-    .reset(reset),
-    .set(set),
-    .action(action),
-    .data(data),
-    .count(count)
-  );
-
-  // Clock generation (10ns period)
-  always #5 sysclk = !sysclk;
-
-  // Task: Print formatted monitor message
-  task show;
-    begin
-      $display("[%0t] updwn=%b id=%b reset=%b set=%b action=%b data=%h -> count=%h",
-                $time, updwn, id, reset, set, action, data, count);
-    end
-  endtask
-
-  // === Concurrent Assertions (SVA) ===
-  // Example: Load via 00110
-  // property load_data_p;
-  //   @(posedge sysclk)
-  //     disable iff (~set)
-  //     (reset) |=> (count == data);
-  // endproperty
-  // assert property (load_data_p) else
-  //   $error("Load data assertion failed at t=%0t", $time);
-
-  // // Example: Full scale 0xFF via xxx11
-  // property full_scale_p;
-  //   @(posedge sysclk)
-  //     disable iff (~set)
-  //     (action) |=> (count == 8'hFF);
-  // endproperty
-  // assert property (full_scale_p) else
-  //   $error("Full scale assertion failed at t=%0t", $time);
-
-  // // Example: Increment behavior
-  // property inc_p;
-  //   @(posedge sysclk)
-  //     disable iff (~set)
-  //     (updwn) |=> (count == $past(count) + 1);
-  // endproperty
-  // assert property (inc_p) else
-  //   $error("Increment assertion failed at t=%0t", $time);
-
-  // // Example: Decrement behavior
-  // property dec_p;
-  //   @(posedge sysclk)
-  //     disable iff (~set)
-  //     (id) |=> (count == $past(count) - 1);
-  // endproperty
-  // assert property (dec_p) else
-  //   $error("Decrement assertion failed at t=%0t", $time);
-
-  initial begin
-    // Initialize signals
-    sysclk = 0;
-    updwn = 0;
-    id = 0;
-    reset = 0;
-    set = 0;
-    action = 0;
-    data = 8'h00;
-
-    $display("=== Starting counter testbench ===");
-
-    // Apply reset
-    set = 0;
-    @(posedge sysclk);
-    show();
-
-    set = 1;
-    @(posedge sysclk);
-    show();
-
-   
-    // Test: increment (updwn=1, id=0, set=1, action=0)
-    updwn = 1;
-    set = 1;
-    repeat(3) begin
-      @(posedge sysclk);
-      show();
+    // Clock generation: 50 MHz clock (20 ns period)
+    initial begin
+        clk = 0;
+        forever #10 clk = ~clk;
     end
 
-    // Test: decrement (updwn=0, id=1, set=1, action=0)
-    updwn = 0;
-    set = 1;
-    id = 1;
-    repeat(3) begin
-      @(posedge sysclk);
-      show();
+    parameter b_rate_factor = 10417;
+    Div_Clk #(
+        .factor(b_rate_factor)
+        ) helper (
+            .rst_n(sw[0]),
+            .clk_in(clk),
+            .clk_out(b_rate)
+        );
+
+    // Initial stimulus
+    initial begin
+        // VCD dump for waveform view (optional)
+        // $dumpfile("top_tb.vcd");
+        // $dumpvars(0, top_tb);
+
+        // Reset all switches
+        sw = 2'b00;          // sw[0] = reset, sw[1] = start_program = 0
+        #200;
+
+        // Release reset
+        sw[0] = 1;
+        #200;
+
+        // Trigger the Memory Processor start
+        sw[1] = 1;
+        // #100;
+
+        // sw[1] = 0; // Remove start pulse
+
+        // Let system run to transmit bytes
+        repeat(20000) @(posedge b_rate);
+
+        $stop;
     end
 
-    // Test: load data (00110 pattern)
-    id = 0;
-    reset = 1;
-    set = 1;
-    action = 0;
-    data = 8'h55;
-    @(posedge sysclk);
-    show();
-
-    // Test: Set to full scale via "xxx11"
-    reset = 0;
-    set = 1;
-    action = 1;
-    @(posedge sysclk);
-    show();
-
-    // Test: hold behavior
-    set = 1;
-    action = 0;
-    repeat(2) begin
-      @(posedge sysclk);
-      show();
-    end
-
-    $display("=== Testbench completed ===");
-    $stop;
-  end
+    // UART Output Monitor
+    // initial begin
+    //     $display("Time\tRsRx");
+    //     $monitor("%0t\t%b", $time, RsRx);
+    // end
 
 endmodule

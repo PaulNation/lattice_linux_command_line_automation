@@ -4,39 +4,32 @@
 `timescale 1ns/1ps
 
 module uart_top (
-    input wire sysclk,
-    input wire updwn,
-    input wire id,
-    input wire reset,
-    input wire set,
-    input wire action,
-    input wire [7:0] data,
-    output reg [7:0] count
-  );
+    input wire clk,
+    input wire [1:0] sw,
+    output wire [6:0] seg,
+    output wire dp,
+    output wire [3:0] an,
+    output wire [1:0] led,
+    output wire RsTx,
+    input wire RsRx,
+    output wire debug
+);
 
-  always @(posedge sysclk or negedge set) begin
-    if (~set) begin
-      count <= 8'h00;
-    end
-    else begin
-      casez ({updwn, id, reset, action})  // Concatenate input signals into a 4-bit vector
-        4'b0001: begin
-          count <= 8'hFF;
-        end
-        4'b0010: begin
-          count <= data;
-        end
-        4'b1000: begin
-          count <= count + 8'h01;
-        end
-        4'b0100: begin
-          count <= count - 8'h01;
-        end
-        default: begin
-          count <= count;
-        end
-      endcase
-    end
-  end
+LED_Driver status_driver (.sw_connector(sw),
+                        .led_connector(led));
 
+Transmit_Tx Tx_Mod (.clk_c(clk),
+                    .sw_c(sw),
+                    .RsTx_c(RsTx));
+
+Reciver_Rx Rx_Mod (
+    .clk_c(clk),
+    .Rx_c(RsRx),
+    .sw_c(sw),
+    .seg_c(seg),
+    .dp_c(dp),
+    .an_c(an)
+);
+
+    assign debug = RsTx;  // Placeholder for debug signal
 endmodule

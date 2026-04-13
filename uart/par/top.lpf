@@ -1,7 +1,38 @@
 # top.lpf — Lattice Diamond pin constraint file
 # Reference: Lattice Diamond User Guide, Appendix A
 #
-# LOCATE COMP "<port_name>" SITE "<pin_name>" ;
-# IOBUF PORT "<port_name>" IO_TYPE=LVCMOS33 ;
-#
-# TODO: add pin assignments for this board
+# NOTE: Pin assignments ported from Xilinx constraints.
+# Verify actual pin locations match your board schematic/design.
+BLOCK RESETPATHS;
+BLOCK ASYNCPATHS;
+
+# ── Clock signal ────────────────────────────────────────────────────────────
+LOCATE COMP "clk" SITE "C8";
+IOBUF PORT "clk" PULLMODE=NONE IO_TYPE=LVCMOS33;
+FREQUENCY PORT "clk" 12 MHZ;
+
+# ── Switches (2-bit) ─────────────────────────────────────────────────────────
+LOCATE COMP "sw[0]" SITE "P2";
+IOBUF PORT "sw[0]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+
+LOCATE COMP "sw[1]" SITE "P1";
+IOBUF PORT "sw[1]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+
+# ── LEDs (2-bit) ─────────────────────────────────────────────────────────────
+LOCATE COMP "led[0]" SITE "P16";
+IOBUF PORT "led[0]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+
+LOCATE COMP "led[1]" SITE "N15";
+IOBUF PORT "led[1]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+
+# ── USB-RS232 Interface (UART) ───────────────────────────────────────────────
+LOCATE COMP "RsRx" SITE "A11";
+IOBUF PORT "RsRx" IO_TYPE=LVCMOS33 PULLMODE=UP DRIVE=4;
+
+LOCATE COMP "RsTx" SITE "C11";
+IOBUF PORT "RsTx" IO_TYPE=LVCMOS33 PULLMODE=UP DRIVE=4;
+
+# ── Configuration ────────────────────────────────────────────────────────────
+# Lattice MachXO3D operates at 3.3V; no explicit config voltage setting needed in LPF
+LOCATE COMP "debug" SITE "E3";
+IOBUF PORT "debug" IO_TYPE=LVCMOS33 PULLMODE=UP DRIVE=4;
