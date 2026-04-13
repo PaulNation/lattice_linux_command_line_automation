@@ -4,7 +4,7 @@
 module counter_tb;
   initial begin
     $dumpfile("trace.vcd");
-    $dumpvars(0, uart_tb);
+    $dumpvars(0, counter_tb);
   end
   // Testbench signals
   reg sysclk;
