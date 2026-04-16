@@ -294,16 +294,16 @@ lint: check-env
 	@echo "[LINT] Complete."
 
 # ── Diamond GUI (interactive project flow) ─────────────────────────────────────
-# Generates a DO file with RTL sources and launches Diamond GUI
+# Generates a TCL file with RTL sources and launches Diamond GUI
 prj: check-env
 	@mkdir -p $(PROJECT_DIR)/prj/impl1
-	$(eval _DO_FILE := $(PROJECT_DIR)/prj/impl1/project.do)
-	@echo "Generating DO file: $(_DO_FILE)"
-	@echo 'prj_project new -name "$(TOP_MODULE)" -impl "impl1" -dev $(DEV_STRING) -synthesis "lse" -lpf "$(PROJECT_DIR)/par/top.lpf"' > $(_DO_FILE)
-	@$(foreach src,$(RTL_SOURCES),echo 'prj_src add "$(src)"' >> $(_DO_FILE); )
-	@echo 'prj_project save' >> $(_DO_FILE)
-	@echo "[PRJ] Launching Diamond GUI with DO file..."
-	@cd $(PROJECT_DIR)/prj/impl1 && ~/lscc/diamond/3.14/bin/lin64/diamond -do project.do
+	$(eval _TCL_FILE := $(PROJECT_DIR)/prj/impl1/project.tcl)
+	@echo "Generating TCL file: $(_TCL_FILE)"
+	@echo 'prj_project new -name "$(TOP_MODULE)" -impl "impl1" -dev $(DEV_STRING) -synthesis "lse" -lpf "$(PROJECT_DIR)/par/top.lpf"' > $(_TCL_FILE)
+	@$(foreach src,$(RTL_SOURCES),echo 'prj_src add "$(src)"' >> $(_TCL_FILE); )
+	@echo 'prj_project save' >> $(_TCL_FILE)
+	@echo "[PRJ] Launching Diamond GUI with TCL file..."
+	@cd $(PROJECT_DIR)/prj/impl1 && ~/lscc/diamond/3.14/bin/lin64/diamond -t project.tcl
 
 # ── All (synthesis then place-and-route, fully headless) ──────────────────
 all: syn par
@@ -366,7 +366,7 @@ help:
 	@echo "  make lint                    Run Verilator linting on RTL and testbench"
 	@echo ""
 	@echo "Diamond GUI:"
-	@echo "  make prj                     Launch Diamond GUI with generated project DO file"
+	@echo "  make prj                     Launch Diamond GUI with generated project TCL file"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean                   Remove all artifacts"
