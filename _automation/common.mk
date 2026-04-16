@@ -57,12 +57,17 @@ SYN_DEPS := $(RTL_SOURCES) $(META)
 PAR_DEPS := $(TOP_LPF)
 SIM_DEPS := $(RTL_SOURCES) $(TB_SOURCES)
 
+# ── Package code mapping for device string ────────────────────────────────────
+PKG_CODE := $(if $(filter CABGA256,$(PACKAGE)),BG256,$(if $(filter FTBGA256,$(PACKAGE)),FTG256,$(if $(filter QFN72,$(PACKAGE)),SG72,BG256)))
+OC_CODE := $(shell echo "$(OC)" | cut -c1)
+DEV_STRING := $(DEVICE)-$(PERF_GRADE)$(PKG_CODE)$(OC_CODE)
+
 # ── Default goal ──────────────────────────────────────────────────────────────
 .DEFAULT_GOAL := help
 
 # ── Phony targets ─────────────────────────────────────────────────────────────
-.PHONY: all syn par pgrm pgrm-bit pgrm-jed sim sim-gui lint \
-        clean clean-syn clean-par clean-pgrm clean-sim help check-env
+.PHONY: all syn par pgrm pgrm-bit pgrm-jed sim sim-gui lint prj \
+        clean clean-syn clean-par clean-pgrm clean-sim clean-prj help check-env
 
 # ── Validation checks ─────────────────────────────────────────────────────────
 check-env:
@@ -288,6 +293,18 @@ lint: check-env
 	verilator --lint-only -Wall $(RTL_SOURCES) $(TB_SOURCES)
 	@echo "[LINT] Complete."
 
+# ── Diamond GUI (interactive project flow) ─────────────────────────────────────
+# Generates a DO file with RTL sources and launches Diamond GUI
+prj: check-env
+	@mkdir -p $(PROJECT_DIR)/prj/impl1
+	$(eval _DO_FILE := $(PROJECT_DIR)/prj/impl1/project.do)
+	@echo "Generating DO file: $(_DO_FILE)"
+	@echo 'prj_project new -name "$(TOP_MODULE)" -impl "impl1" -dev $(DEV_STRING) -synthesis "lse" -lpf "$(PROJECT_DIR)/par/top.lpf"' > $(_DO_FILE)
+	@$(foreach src,$(RTL_SOURCES),echo 'prj_src add "$(src)"' >> $(_DO_FILE); )
+	@echo 'prj_project save' >> $(_DO_FILE)
+	@echo "[PRJ] Launching Diamond GUI with DO file..."
+	@cd $(PROJECT_DIR)/prj/impl1 && ~/lscc/diamond/3.14/bin/lin64/diamond -do project.do
+
 # ── All (synthesis then place-and-route, fully headless) ──────────────────
 all: syn par
 
@@ -299,6 +316,7 @@ clean:
 	rm -f  $(PROJECT_DIR)/pgrm/*.bit $(PROJECT_DIR)/pgrm/*.jed $(PROJECT_DIR)/pgrm/*.fea
 	rm -f $(PROJECT_DIR)/pgrm/logs/* $(PROJECT_DIR)/pgrm/.bit_done $(PROJECT_DIR)/pgrm/.jed_done
 	rm -rf $(PROJECT_DIR)/sim/out && rm -f $(PROJECT_DIR)/sim/logs/*
+	rm -rf $(PROJECT_DIR)/prj
 
 clean-syn:
 	rm -rf $(PROJECT_DIR)/syn/out
@@ -317,6 +335,9 @@ clean-sim:
 	rm -f  $(PROJECT_DIR)/sim/out/*.wlf $(PROJECT_DIR)/sim/out/*.log $(PROJECT_DIR)/sim/out/*.jou
 	rm -f  $(PROJECT_DIR)/sim/out/*.pb $(PROJECT_DIR)/sim/out/*.vstf
 	rm -f  $(PROJECT_DIR)/sim/out/*.vcd $(PROJECT_DIR)/sim/out/$(PROJECT_NAME)_sim.cr.mti $(PROJECT_DIR)/sim/out/$(PROJECT_NAME)_sim.mpf
+
+clean-prj:
+	rm -rf $(PROJECT_DIR)/prj
 
 # ── Help ─────────────────────────────────────────────────────────────────
 help:
@@ -344,12 +365,16 @@ help:
 	@echo "Linting:"
 	@echo "  make lint                    Run Verilator linting on RTL and testbench"
 	@echo ""
+	@echo "Diamond GUI:"
+	@echo "  make prj                     Launch Diamond GUI with generated project DO file"
+	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean                   Remove all artifacts"
 	@echo "  make clean-syn               Remove synthesis artifacts only"
 	@echo "  make clean-par               Remove place-and-route artifacts only"
 	@echo "  make clean-pgrm              Remove programming artifacts only"
 	@echo "  make clean-sim               Remove simulation artifacts only"
+	@echo "  make clean-prj               Remove Diamond GUI project artifacts only"
 	@echo ""
 	@echo "Help:"
 	@echo "  make help                    Show this message"

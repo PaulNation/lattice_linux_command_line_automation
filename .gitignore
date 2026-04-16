@@ -1,2 +1,5 @@
 # Machine-local tool paths — never commit
 _automation/paths.cfg
+
+# Diamond GUI project artifacts (generated at runtime, not scaffolded)
+*/prj/
