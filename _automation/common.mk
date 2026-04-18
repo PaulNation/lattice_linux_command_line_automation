@@ -327,7 +327,7 @@ prj-export: check-env
 	@echo 'prj_project archive -includeAll "$(_ARCHIVE)"' >> $(_TCL_FILE)
 	@echo 'exit' >> $(_TCL_FILE)
 	@echo "[PRJ-EXPORT] Running Diamond to create archive (log: $(_EXPORT_DIR)/logs/export.log)..."
-	@cd $(_EXPORT_DIR)/impl1 && ~/lscc/diamond/3.14/bin/lin64/diamondc -t export.tcl > $(_EXPORT_DIR)/logs/export.log 2>&1 || (echo "[PRJ-EXPORT] FAILED. Check $(_EXPORT_DIR)/logs/export.log"; exit 1)
+	@cd $(_EXPORT_DIR)/impl1 && ~/lscc/diamond/3.14/bin/lin64/diamondc export.tcl > $(_EXPORT_DIR)/logs/export.log 2>&1 || (echo "[PRJ-EXPORT] FAILED. Check $(_EXPORT_DIR)/logs/export.log"; exit 1)
 	@echo "[PRJ-EXPORT] Cleaning up intermediate files..."
 	@rm -rf $(_EXPORT_DIR)/impl1 $(_EXPORT_DIR)/logs
 	@echo "[PRJ-EXPORT] Complete. Archive: $(_ARCHIVE)"
