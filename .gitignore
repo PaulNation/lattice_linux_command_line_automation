@@ -3,3 +3,6 @@ _automation/paths.cfg
 
 # Diamond GUI project artifacts (generated at runtime, not scaffolded)
 */prj/
+
+# Project export archives and intermediate files
+*/export/
