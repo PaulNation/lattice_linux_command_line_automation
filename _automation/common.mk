@@ -66,7 +66,7 @@ DEV_STRING := $(DEVICE)-$(PERF_GRADE)$(PKG_CODE)$(OC_CODE)
 .DEFAULT_GOAL := help
 
 # ── Phony targets ─────────────────────────────────────────────────────────────
-.PHONY: all syn par pgrm pgrm-bit pgrm-jed sim sim-gui lint prj \
+.PHONY: all syn par pgrm pgrm-bit pgrm-jed sim sim-gui lint prj prj-export \
         clean clean-syn clean-par clean-pgrm clean-sim clean-prj help check-env
 
 # ── Validation checks ─────────────────────────────────────────────────────────
@@ -305,6 +305,33 @@ prj: check-env
 	@echo "[PRJ] Launching Diamond GUI with TCL file..."
 	@cd $(PROJECT_DIR)/prj/impl1 && ~/lscc/diamond/3.14/bin/lin64/diamond -t project.tcl
 
+# ── Diamond project export (creates deployable archive) ────────────────────────
+# Copies RTL/TB/constraints to an export directory, creates a Diamond project with
+# testbenches marked as simulation-only, and exports to a ZIP archive.
+# Intermediate files are cleaned up; only the archive remains.
+
+prj-export: check-env
+	@mkdir -p $(PROJECT_DIR)/export/impl1/source $(PROJECT_DIR)/export/logs
+	$(eval _EXPORT_DIR := $(PROJECT_DIR)/export)
+	$(eval _SOURCE_DIR := $(_EXPORT_DIR)/impl1/source)
+	$(eval _TCL_FILE := $(_EXPORT_DIR)/impl1/export.tcl)
+	$(eval _ARCHIVE := $(_EXPORT_DIR)/$(PROJECT_NAME)_export.zip)
+	@echo "[PRJ-EXPORT] Copying source files to $(_SOURCE_DIR)..."
+	@cp $(RTL_SOURCES) $(TB_SOURCES) $(TOP_LPF) $(_SOURCE_DIR)/
+	@echo "[PRJ-EXPORT] Generating TCL file: $(_TCL_FILE)"
+	@echo 'prj_project new -name "$(TOP_MODULE)" -impl "impl1" -dev $(DEV_STRING) -synthesis "synplify" -lpf "$(_SOURCE_DIR)/top.lpf"' > $(_TCL_FILE)
+	@$(foreach src,$(RTL_SOURCES),echo 'prj_src add "$(_SOURCE_DIR)/$(notdir $(src))"' >> $(_TCL_FILE); )
+	@$(foreach src,$(TB_SOURCES),echo 'prj_src add "$(_SOURCE_DIR)/$(notdir $(src))"' >> $(_TCL_FILE); )
+	@$(foreach src,$(TB_SOURCES),echo 'prj_src syn_sim -src "$(_SOURCE_DIR)/$(notdir $(src))" SimulateOnly' >> $(_TCL_FILE); )
+	@echo 'prj_project save' >> $(_TCL_FILE)
+	@echo 'prj_project archive -includeAll "$(_ARCHIVE)"' >> $(_TCL_FILE)
+	@echo 'exit' >> $(_TCL_FILE)
+	@echo "[PRJ-EXPORT] Running Diamond to create archive (log: $(_EXPORT_DIR)/logs/export.log)..."
+	@cd $(_EXPORT_DIR)/impl1 && ~/lscc/diamond/3.14/bin/lin64/diamondc -t export.tcl > $(_EXPORT_DIR)/logs/export.log 2>&1 || (echo "[PRJ-EXPORT] FAILED. Check $(_EXPORT_DIR)/logs/export.log"; exit 1)
+	@echo "[PRJ-EXPORT] Cleaning up intermediate files..."
+	@rm -rf $(_EXPORT_DIR)/impl1 $(_EXPORT_DIR)/logs
+	@echo "[PRJ-EXPORT] Complete. Archive: $(_ARCHIVE)"
+
 # ── All (synthesis then place-and-route, fully headless) ──────────────────
 all: syn par
 
@@ -367,6 +394,7 @@ help:
 	@echo ""
 	@echo "Diamond GUI:"
 	@echo "  make prj                     Launch Diamond GUI with generated project TCL file"
+	@echo "  make prj-export              Create self-contained project archive (copies files, marks TB as sim-only)"
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean                   Remove all artifacts"
